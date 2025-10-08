@@ -6,7 +6,7 @@ import warnings
 from collections import OrderedDict
 from collections.abc import Iterable
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import datetime, timezone
 from datetime import timedelta
 from datetime import tzinfo
 from typing import Optional
@@ -81,7 +81,7 @@ def utcnow():
             # Test some things "100 hours" in the future
     ```
     """
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
 
 
 def print_deprecation_warning(old_param_name, new_param_name):
@@ -370,13 +370,14 @@ def get_value_by_dot(doc, key, can_generate_array=False):
     key_items = key.split('.')
     for key_index, key_item in enumerate(key_items):
         if isinstance(result, dict):
-            result = result[key_item]
-
+            result = result.get(key_item, None)
+            
         elif isinstance(result, (list, tuple)):
             try:
                 int_key = int(key_item)
             except ValueError as err:
                 if not can_generate_array:
+                    print(f"Error: cannot convert {key_item} to int in {key_items} at index {key_index}", flush=True)
                     raise KeyError(key_index) from err
                 remaining_key = '.'.join(key_items[key_index:])
                 return [get_value_by_dot(subdoc, remaining_key) for subdoc in result]
@@ -387,6 +388,7 @@ def get_value_by_dot(doc, key, can_generate_array=False):
                 raise KeyError(key_index) from err
 
         else:
+            print(f"Error: cannot access key {key_item} in {result} at index {key_index}", flush=True)
             raise KeyError(key_index)
 
     return result

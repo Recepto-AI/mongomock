@@ -14,7 +14,7 @@ import random
 import re
 import warnings
 import json
-
+import traceback
 import pytz
 from packaging import version
 from sentinels import NOTHING
@@ -87,6 +87,7 @@ project_operators = [
     '$stdDevPop',
     '$stdDevSamp',
     '$arrayElemAt',
+    '$getField',
     '$first',
     '$last',
 ]
@@ -171,6 +172,7 @@ type_convertion_operators = [
     '$receptoStringToJson',
     '$toString',
     '$toInt',
+    '$toBool',
     '$toDecimal',
     '$toLong',
     '$arrayToObject',
@@ -236,6 +238,9 @@ class _Parser:
 
     def parse(self, expression):
         """Parse a MongoDB expression."""
+        if isinstance(expression, list):
+            return [self.parse(item) for item in expression]
+
         if not isinstance(expression, dict):
             # May raise a KeyError despite the ignore missing key.
             return self._parse_basic_expression(expression)
@@ -324,6 +329,8 @@ class _Parser:
                         {
                             'ROOT': self._doc_dict,
                             'CURRENT': self._doc_dict,
+                            'NOW': helpers.utcnow(),
+                            'REMOVE': None,
                         },
                         **self._user_vars,
                     ),
@@ -437,6 +444,24 @@ class _Parser:
                 return array[index]
             except IndexError as error:
                 raise KeyError('Array have length less than index value') from error
+        if operator == '$getField':
+            if isinstance(values, dict):
+                field = values.get('field', None)
+                input = values.get('input', '$$ROOT')
+                if field is None:
+                    raise OperationFailure('$getField requires "field" parameter')
+
+                field_value = self.parse(field)
+                input_doc = self.parse(input)
+
+                if not isinstance(input_doc, dict):
+                    raise OperationFailure('$getField "input" parameter must resolve to an object')
+                if not isinstance(field_value, str):
+                    raise OperationFailure('$getField "field" parameter must resolve to a string')
+                try:
+                    return input_doc[field_value]
+                except KeyError as error:
+                    raise KeyError(f'Field "{field}" not found in document') from error
 
         raise NotImplementedError(
             f"Although '{operator}' is a valid project operator for the "
@@ -493,8 +518,8 @@ class _Parser:
             parsed = self.parse(values)
             return str(parsed).upper() if parsed is not None else ''
         if operator == '$concat':
-            parsed_list = list(self.parse_many(values))
-            return None if None in parsed_list else ''.join([str(x) for x in parsed_list])
+            parsed_list = list(self.parse(values))
+            return ''.join([str(x) for x in parsed_list])
         if operator == '$split':
             if len(values) != 2:
                 raise OperationFailure('split must have 2 items')
@@ -714,7 +739,7 @@ class _Parser:
             if not isinstance(value, (list, tuple)):
                 value = [value]
 
-            parsed_list = list(self.parse_many(value))
+            parsed_list = list(self.parse(value))
             for parsed_item in parsed_list:
                 if parsed_item is not None and not isinstance(parsed_item, (list, tuple)):
                     raise OperationFailure(
@@ -806,31 +831,64 @@ class _Parser:
                     f'Expression $slice takes at least 2 arguments, and at most '
                     f'3, but {len(value)} were passed in'
                 )
-            array_value = self.parse(value[0])
+            parsed_value = list(self.parse_many(value))
+            array_value = parsed_value[0]
             if not isinstance(array_value, list):
                 raise OperationFailure(
                     f'First argument to $slice must be an array, but is of '
                     f'type: {type(array_value)}'
                 )
-            for num, v in zip(('Second', 'Third'), value[1:]):
+            for num, v in zip(('Second', 'Third'), parsed_value[1:]):
                 if not isinstance(v, int):
                     raise OperationFailure(
-                        f'{num} argument to $slice must be numeric, but is of type: {type(v)}'
+                        f'{num} argument to $slice must be resolved to numeric, but is of type: {type(v)}'
                     )
-            if len(value) > 2 and value[2] <= 0:
+            if len(parsed_value) > 2 and parsed_value[2] <= 0:
                 raise OperationFailure(f'Third argument to $slice must be positive: {value[2]}')
 
-            start = value[1]
+            start = parsed_value[1]
             stop = None
+
             if start < 0:
-                if len(value) > 2:
-                    stop = len(array_value) + start + value[2]
-            elif len(value) > 2:
-                stop = start + value[2]
+                if len(parsed_value) > 2:
+                    stop = len(array_value) + start + parsed_value[2]
+            elif len(parsed_value) > 2:
+                stop = start + parsed_value[2]
             else:
                 stop = start
                 start = 0
             return array_value[start:stop]
+
+        if operator == "$reduce":
+            if not isinstance(value, dict):
+                raise OperationFailure('$reduce only supports an object as its argument')
+
+            reduce_keys = value.keys()
+            if set(reduce_keys) != {'input', 'initialValue', 'in'}:
+                raise OperationFailure(
+                    f"$reduce only supports the 'input', 'initialValue' and 'in' parameters, "
+                    f'found {reduce_keys}'
+                )
+
+            input_array = self._parse_or_nothing(value['input'])
+
+            if input_array is None or input_array is NOTHING:
+                return None
+
+            if not isinstance(input_array, (list, tuple)):
+                raise OperationFailure(
+                    f"input to $reduce must be an array not {type(input_array)}"
+                )
+
+            in_expr = value["in"]
+            accumulator = self.parse(value['initialValue'])
+            for item in input_array:
+                accumulator = _Parser(
+                    self._doc_dict,
+                    dict(self._user_vars, **{'this': item, 'value': accumulator}),
+                    ignore_missing_keys=self._ignore_missing_keys,
+                ).parse(in_expr)
+            return accumulator
 
         raise NotImplementedError(
             f"Although '{operator}' is a valid array operator for the "
@@ -879,6 +937,12 @@ class _Parser:
             raise NotImplementedError(
                 'You need to import the pymongo library to support decimal128 type.'
             )
+        if operator == '$toBool':
+            try:
+                parsed = self.parse(values)
+            except KeyError:
+                return None
+            return bool(parsed)
 
         if operator == '$toLong':
             try:
@@ -1113,6 +1177,12 @@ class _Parser:
         if operator == '$setEquals':
             set_values = [set(self.parse(value)) for value in values]
             return all(set1 == set2 for set1, set2 in itertools.combinations(set_values, 2))
+        if operator == '$anyElementTrue':
+            array = self.parse(values)
+            if not isinstance(array, (list, tuple)):
+                raise OperationFailure(f'$anyElementTrue requires an array, found: {type(array)}')
+            return any(helpers.mongodb_to_bool(item) for item in array)
+
         raise NotImplementedError(
             f"Although '{operator}' is a valid set operator for the aggregation "
             f'pipeline, it is currently not implemented in Mongomock.'
@@ -1664,15 +1734,22 @@ def _handle_add_fields_stage(in_collection, unused_database, options, user_vars)
                 out_value = _parse_expression(
                     value, in_doc, user_vars=user_vars, ignore_missing_keys=True
                 )
-            except KeyError:
+            except KeyError as e:
+                print(f"Error: skipping field {field} because of missing key: {e}", flush=True)
+                traceback.print_exc()
                 continue
-            parts = field.split('.')
-            for subfield in parts[:-1]:
-                out_doc[subfield] = out_doc.get(subfield, {})
-                if not isinstance(out_doc[subfield], dict):
-                    out_doc[subfield] = {}
-                out_doc = out_doc[subfield]
-            out_doc[parts[-1]] = out_value
+            try:
+                parts = field.split('.')
+                for subfield in parts[:-1]:
+                    out_doc[subfield] = out_doc.get(subfield, {})
+                    if not isinstance(out_doc[subfield], dict):
+                        out_doc[subfield] = {}
+                    out_doc = out_doc[subfield]
+                out_doc[parts[-1]] = out_value
+            except Exception as e:
+                print(f"Error adding field {field} with value {value}: {e}", flush=True)
+                traceback.print_exc()
+                raise
     return out_collection
 
 
@@ -1715,6 +1792,11 @@ def _handle_match_stage(in_collection, database, options, user_vars):
         )
     ]
 
+def _handle_recepto_debug_stage(in_collection, database, options, user_vars):
+    for doc in in_collection:
+        value = _parse_expression(options, doc, ignore_missing_keys=False, user_vars=user_vars)
+        print(f"Aggregation debug: {options}: {value!r}")
+    return in_collection
 
 _PIPELINE_HANDLERS = {
     '$addFields': _handle_add_fields_stage,
@@ -1747,6 +1829,7 @@ _PIPELINE_HANDLERS = {
     '$sortByCount': None,
     '$unset': None,
     '$unwind': _handle_unwind_stage,
+    '$receptoDebug': _handle_recepto_debug_stage,
 }
 
 
