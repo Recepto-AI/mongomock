@@ -2,9 +2,9 @@ from typing import Any, Callable, Literal, Sequence, Tuple, Union
 from unittest import mock
 
 from bson.objectid import ObjectId as ObjectId
-from pymongo import MongoClient as MongoClient
-from pymongo.collection import Collection as Collection
-from pymongo.database import Database as Database
+from mongomock.mongo_client import MongoClient as MongoClient
+from mongomock.collection import Collection as Collection
+from mongomock.database import Database as Database
 from pymongo.errors import (
     CollectionInvalid as CollectionInvalid,
     DuplicateKeyError as DuplicateKeyError,
@@ -14,10 +14,10 @@ from pymongo.errors import (
 
 def patch(
     servers: Union[str, Tuple[str, int], Sequence[Union[str, Tuple[str, int]]]] = ...,
-    on_new: Literal['error', 'create', 'timeout', 'pymongo'] = ...,
+    on_new: Literal["error", "create", "timeout", "pymongo"] = ...,
 ) -> mock._patch: ...
 
-_FeatureName = Literal['collation', 'session']
+_FeatureName = Literal["collation", "session"]
 
 def ignore_feature(feature: _FeatureName) -> None: ...
 def warn_on_feature(feature: _FeatureName) -> None: ...
