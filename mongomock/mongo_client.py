@@ -1,4 +1,5 @@
 import itertools
+from typing import cast
 import warnings
 
 from packaging import version
@@ -60,7 +61,7 @@ class MongoClient:
             # https://www.mongodb.com/docs/manual/reference/connection-string-options/#mongodb-urioption-urioption.uuidRepresentation
             uuid_representation=kwargs.get('uuidRepresentation'),
         )
-        self._database_accesses = {}
+        self._database_accesses: dict[str, Database] = {}
         self._store = _store or ServerStore()
         self._id = next(self._CONNECTION_ID)
         self._document_class = document_class
@@ -77,7 +78,7 @@ class MongoClient:
         else:
             self.host, self.port = split_hosts(self.host, default_port=self.port)[0]
 
-        self.__default_database_name = dbase
+        self.__default_database_name: str | None = dbase
 
         self._server_version = mongomock.SERVER_VERSION
 
@@ -168,22 +169,23 @@ class MongoClient:
 
     def get_database(
         self,
-        name=None,
+        name: str | None = None,
         codec_options=None,
         read_preference=None,
         write_concern=None,
         read_concern=None,
     ):
         if name is None:
-            db = self.get_default_database(
+            db = cast("Database", self.get_default_database(
                 codec_options=codec_options,
                 read_preference=read_preference,
                 write_concern=write_concern,
                 read_concern=read_concern,
-            )
+            ))
         else:
             db = self._database_accesses.get(name)
         if db is None:
+            name = cast(str, name)
             db_store = self._store[name]
             db = self._database_accesses[name] = Database(
                 self,
@@ -195,7 +197,7 @@ class MongoClient:
             )
         return db
 
-    def get_default_database(self, default=None, **kwargs):
+    def get_default_database(self, default: str | None = None, **kwargs):
         name = self.__default_database_name
         name = name if name is not None else default
         if name is None:
