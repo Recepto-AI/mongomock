@@ -153,6 +153,7 @@ comparison_operators = [
     '$cmp',
     '$eq',
     '$ne',
+    '$receptoRange',
     *list(filtering.SORTING_OPERATOR_MAP.keys()),
 ]
 boolean_operators = ['$and', '$or', '$not']
@@ -496,6 +497,33 @@ class _Parser:
 
     def _handle_comparison_operator(self, operator, values):
         assert len(values) == 2, 'Comparison requires two expressions'
+
+        if operator == '$receptoRange':
+            if not isinstance(values, (list, tuple)) or len(values) != 2:
+                raise OperationFailure(
+                    f'$receptoRange requires an array with two elements: [value, [lower, upper]], got {values}'
+                )
+            try:
+                value_to_check = self.parse(values[0])
+            except KeyError:
+                return False
+            range_limits = self.parse(values[1])
+            if not isinstance(range_limits, (list, tuple)) or len(range_limits) != 2:
+                raise OperationFailure(
+                    f'$receptoRange requires an array with two elements: [value, [lower, upper]], got {values}'
+                )
+            try:
+                lower_bound = self.parse(range_limits[0])
+                upper_bound = self.parse(range_limits[1])
+            except KeyError:
+                return False
+            if value_to_check is None or lower_bound is None or upper_bound is None:
+                return False
+            try:
+                return lower_bound <= value_to_check <= upper_bound
+            except TypeError:
+                return False
+
         a = self.parse(values[0])
         b = self.parse(values[1])
         if operator == '$eq':
@@ -859,7 +887,7 @@ class _Parser:
                 start = 0
             return array_value[start:stop]
 
-        if operator == "$reduce":
+        if operator == '$reduce':
             if not isinstance(value, dict):
                 raise OperationFailure('$reduce only supports an object as its argument')
 
@@ -876,11 +904,9 @@ class _Parser:
                 return None
 
             if not isinstance(input_array, (list, tuple)):
-                raise OperationFailure(
-                    f"input to $reduce must be an array not {type(input_array)}"
-                )
+                raise OperationFailure(f'input to $reduce must be an array not {type(input_array)}')
 
-            in_expr = value["in"]
+            in_expr = value['in']
             accumulator = self.parse(value['initialValue'])
             for item in input_array:
                 accumulator = _Parser(
@@ -1735,7 +1761,7 @@ def _handle_add_fields_stage(in_collection, unused_database, options, user_vars)
                     value, in_doc, user_vars=user_vars, ignore_missing_keys=True
                 )
             except KeyError as e:
-                print(f"Error: skipping field {field} because of missing key: {e}", flush=True)
+                print(f'Error: skipping field {field} because of missing key: {e}', flush=True)
                 traceback.print_exc()
                 continue
             try:
@@ -1747,7 +1773,7 @@ def _handle_add_fields_stage(in_collection, unused_database, options, user_vars)
                     out_doc = out_doc[subfield]
                 out_doc[parts[-1]] = out_value
             except Exception as e:
-                print(f"Error adding field {field} with value {value}: {e}", flush=True)
+                print(f'Error adding field {field} with value {value}: {e}', flush=True)
                 traceback.print_exc()
                 raise
     return out_collection
@@ -1792,11 +1818,13 @@ def _handle_match_stage(in_collection, database, options, user_vars):
         )
     ]
 
+
 def _handle_recepto_debug_stage(in_collection, database, options, user_vars):
     for doc in in_collection:
         value = _parse_expression(options, doc, ignore_missing_keys=False, user_vars=user_vars)
-        print(f"Aggregation debug: {options}: {value!r}")
+        print(f'Aggregation debug: {options}: {value!r}')
     return in_collection
+
 
 _PIPELINE_HANDLERS = {
     '$addFields': _handle_add_fields_stage,
