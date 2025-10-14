@@ -131,6 +131,7 @@ array_operators = [
 ]
 object_operators = [
     '$mergeObjects',
+    '$setField'
 ]
 text_search_operators = ['$meta']
 string_operators = [
@@ -1235,11 +1236,46 @@ class _Parser:
             values = self.parse(values) if isinstance(values, str) else self.parse_many(values)
             return _merge_objects_operation(values)
 
-        # This should never happen: it is only a safe fallback if something went wrong.
-        raise NotImplementedError(
-            f"Although '{operator}' is a valid object operator for the aggregation pipeline, "
-            'it is currently not implemented in Mongomock.'
-        )
+        if operator == '$setField':
+            fields = ["field", "value", "input"]
+            for operator in fields:
+                if operator not in values:
+                    raise OperationFailure(f"Must specify '{operator}' field for a $setField")
+
+            for operator in values:
+                if operator not in fields:
+                    raise OperationFailure(f"Unrecognized option to $setField: {operator}.")
+
+            field = values["field"]
+            value = values["value"]
+            input_doc = values["input"]
+
+            try:
+                input_value = self.parse(input_doc)
+
+                if not isinstance(input_value, (None, dict)):
+                    raise OperationFailure(
+                        f"'input' expression must evaluate to an object or null or missing, but resulting value was: "
+                        f"{input_value}"
+                    )
+
+                if input_value is None:
+                    return None
+
+                field_value = self.parse(field)
+
+                if not isinstance(field_value, str):
+                    raise OperationFailure(
+                        f"'field' expression must evaluate to a string, but resulting value was: "
+                        f"{field_value}"
+                    )
+
+                input_value[field_value] = self.parse(value)
+
+            except Exception as e:
+                print(f"Error setting field {field} with value {value}: {e}", flush=True)
+                traceback.print_exc()
+                raise
 
 
 def _parse_expression(expression, doc_dict, ignore_missing_keys=False, user_vars=None):
