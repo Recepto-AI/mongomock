@@ -1253,7 +1253,7 @@ class _Parser:
             try:
                 input_value = self.parse(input_doc)
 
-                if not isinstance(input_value, (None, dict)):
+                if input_value is not None and not isinstance(input_value, dict):
                     raise OperationFailure(
                         f"'input' expression must evaluate to an object or null or missing, but resulting value was: "
                         f"{input_value}"
