@@ -1200,6 +1200,26 @@ class _Parser:
                     if value not in result:
                         result.append(value)
             return result
+        if operator == '$setIntersection':
+            if not isinstance(values, (list, tuple)) or len(values) < 2:
+                raise OperationFailure('$setIntersection requires at least two arrays as input')
+            parsed_arrays = [self.parse(value) for value in values]
+            for i, arr in enumerate(parsed_arrays):
+                if not isinstance(arr, (list, tuple)):
+                    raise OperationFailure(
+                        f'$setIntersection requires all inputs to be arrays, but input {i} is {type(arr)}'
+                    )
+            if not parsed_arrays:
+                return []
+            first_array = parsed_arrays[0]
+            second_array = parsed_arrays[1]
+            result = []
+            for item in first_array:
+                for item1 in second_array:
+                    if item == item1 and item not in result:
+                        result.append[item]
+            return result
+
         if operator == '$setEquals':
             set_values = [set(self.parse(value)) for value in values]
             return all(set1 == set2 for set1, set2 in itertools.combinations(set_values, 2))
