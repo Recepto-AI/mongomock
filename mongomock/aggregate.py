@@ -1211,14 +1211,10 @@ class _Parser:
                     )
             if not parsed_arrays:
                 return []
-            first_array = parsed_arrays[0]
-            second_array = parsed_arrays[1]
-            result = []
-            for item in first_array:
-                for item1 in second_array:
-                    if item == item1 and item not in result:
-                        result.append[item]
-            return result
+            result_set = set(parsed_arrays[0])
+            for arr in parsed_arrays[1:]:
+                result_set = result_set.intersection(arr)
+            return list(result_set)
 
         if operator == '$setEquals':
             set_values = [set(self.parse(value)) for value in values]
