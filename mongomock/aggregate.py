@@ -1201,9 +1201,9 @@ class _Parser:
                         result.append(value)
             return result
         if operator == '$setIntersection':
-            if not isinstance(values, (list, tuple)) or len(values) < 2:
-                raise OperationFailure('$setIntersection requires at least two arrays as input')
             parsed_arrays = [self.parse(value) for value in values]
+            if not isinstance(parsed_arrays, (list, tuple)) or len(values) < 2:
+                raise OperationFailure('$setIntersection requires at least two arrays as input')
             for i, arr in enumerate(parsed_arrays):
                 if not isinstance(arr, (list, tuple)):
                     raise OperationFailure(
