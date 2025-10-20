@@ -558,7 +558,7 @@ class _Parser:
             if not isinstance(chars, str):
                 raise TypeError('$trim chars must evaluate to string')
 
-        return string.strip(chars)
+            return string.strip(chars)
 
         if operator == '$concat':
             parsed_list = list(self.parse(values))
