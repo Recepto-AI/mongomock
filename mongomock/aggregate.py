@@ -129,10 +129,7 @@ array_operators = [
     '$slice',
     '$zip',
 ]
-object_operators = [
-    '$mergeObjects',
-    '$setField'
-]
+object_operators = ['$mergeObjects', '$setField']
 text_search_operators = ['$meta']
 string_operators = [
     '$concat',
@@ -546,6 +543,23 @@ class _Parser:
         if operator == '$toUpper':
             parsed = self.parse(values)
             return str(parsed).upper() if parsed is not None else ''
+        if operator == '$trim':
+            if isinstance(values, dict):
+                string = self.parse(values.get('input'))
+                chars = self.parse(values.get('chars', ' '))
+            else:
+                string = self.parse(values)
+                chars = ' '
+
+            if string is None:
+                return ''
+            if not isinstance(string, str):
+                raise TypeError('$trim input must evaluate to string')
+            if not isinstance(chars, str):
+                raise TypeError('$trim chars must evaluate to string')
+
+        return string.strip(chars)
+
         if operator == '$concat':
             parsed_list = list(self.parse(values))
             return ''.join([str(x) for x in parsed_list])
@@ -1237,18 +1251,18 @@ class _Parser:
             return _merge_objects_operation(values)
 
         if operator == '$setField':
-            fields = ["field", "value", "input"]
+            fields = ['field', 'value', 'input']
             for operator in fields:
                 if operator not in values:
                     raise OperationFailure(f"Must specify '{operator}' field for a $setField")
 
             for operator in values:
                 if operator not in fields:
-                    raise OperationFailure(f"Unrecognized option to $setField: {operator}.")
+                    raise OperationFailure(f'Unrecognized option to $setField: {operator}.')
 
-            field = values["field"]
-            value = values["value"]
-            input_doc = values["input"]
+            field = values['field']
+            value = values['value']
+            input_doc = values['input']
 
             try:
                 input_value = self.parse(input_doc)
@@ -1256,7 +1270,7 @@ class _Parser:
                 if input_value is not None and not isinstance(input_value, dict):
                     raise OperationFailure(
                         f"'input' expression must evaluate to an object or null or missing, but resulting value was: "
-                        f"{input_value}"
+                        f'{input_value}'
                     )
 
                 if input_value is None:
@@ -1267,13 +1281,13 @@ class _Parser:
                 if not isinstance(field_value, str):
                     raise OperationFailure(
                         f"'field' expression must evaluate to a string, but resulting value was: "
-                        f"{field_value}"
+                        f'{field_value}'
                     )
 
                 input_value[field_value] = self.parse(value)
 
             except Exception as e:
-                print(f"Error setting field {field} with value {value}: {e}", flush=True)
+                print(f'Error setting field {field} with value {value}: {e}', flush=True)
                 traceback.print_exc()
                 raise
 
