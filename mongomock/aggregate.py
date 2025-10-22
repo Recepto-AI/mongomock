@@ -101,6 +101,7 @@ projection_operators = [
 date_operators = [
     '$dateFromString',
     '$dateToString',
+    '$dateSubtract',
     '$dateFromParts',
     '$dayOfMonth',
     '$dayOfWeek',
@@ -706,34 +707,65 @@ class _Parser:
             return int(out_value.microsecond / 1000)
         if operator == '$dateToString':
             if not isinstance(values, dict):
+                raise OperationFailure('$dateToString requires a document as argument')
+            required_fields = {'format', 'date'}
+            if not required_fields.issubset(set(values)):
+                raise OperationFailure('$dateToString requires both "format" and "date" fields')
+            format_str = self.parse(values['format'])
+            date_value = self.parse(values['date'])
+            timezone_str = values.get('timezone')
+            on_null = values.get('onNull')
+            if date_value is None:
+                if on_null is not None:
+                    return self.parse(on_null)
+                return None
+            if not isinstance(date_value, datetime.datetime):
+                raise OperationFailure('$dateToString "date" must evaluate to a Date')
+            if timezone_str:
+                try:
+                    tz = pytz.timezone(timezone_str)
+                    if date_value.tzinfo is None:
+                        date_value = pytz.UTC.localize(date_value)
+                    date_value = date_value.astimezone(tz)
+                except Exception as e:
+                    raise OperationFailure(f'Invalid timezone: {timezone_str}') from e
+
+            try:
+                return self._format_date_to_string(date_value, format_str)
+            except Exception as e:
+                raise OperationFailure(f'Error formatting date: {str(e)}') from e
+        if operator == '$dateSubtract':
+            if not isinstance(values, dict):
+                raise OperationFailure('$dateSubtract requires a document as argument')
+
+            required_fields = {'startDate', 'unit', 'amount'}
+            if not required_fields.issubset(set(values)):
                 raise OperationFailure(
-                    '$dateToString operator must correspond a dict'
-                    'that has "format" and "date" field.'
+                    '$dateSubtract requires "startDate", "unit", and "amount" fields'
                 )
-            if not isinstance(values, dict) or not {'format', 'date'} <= set(values):
-                raise OperationFailure(
-                    '$dateToString operator must correspond a dict'
-                    'that has "format" and "date" field.'
-                )
-            if '%L' in out_value['format']:
-                raise NotImplementedError(
-                    'Although %L is a valid date format for the '
-                    '$dateToString operator, it is currently not implemented '
-                    ' in Mongomock.'
-                )
-            if 'onNull' in values:
-                raise NotImplementedError(
-                    'Although onNull is a valid field for the '
-                    '$dateToString operator, it is currently not implemented '
-                    ' in Mongomock.'
-                )
-            if 'timezone' in values:
-                raise NotImplementedError(
-                    'Although timezone is a valid field for the '
-                    '$dateToString operator, it is currently not implemented '
-                    ' in Mongomock.'
-                )
-            return out_value['date'].strftime(out_value['format'])
+            start_date = self.parse(values['startDate'])
+            unit = self.parse(values['unit'])
+            amount = self.parse(values['amount'])
+            timezone_str = values.get('timezone')
+            if start_date is None:
+                return None
+            if not isinstance(start_date, datetime.datetime):
+                raise OperationFailure('$dateSubtract "startDate" must evaluate to a Date')
+            if not isinstance(amount, (int, float)):
+                raise OperationFailure('$dateSubtract "amount" must evaluate to a number')
+            if timezone_str:
+                try:
+                    tz = pytz.timezone(timezone_str)
+                    if start_date.tzinfo is None:
+                        start_date = pytz.UTC.localize(start_date)
+                    start_date = start_date.astimezone(tz)
+                except Exception as e:
+                    raise OperationFailure(f'Invalid timezone: {timezone_str}') from e
+            try:
+                return self._subtract_from_date(start_date, unit, amount)
+            except Exception as e:
+                raise OperationFailure(f'Error subtracting from date: {str(e)}') from e
+
         if operator == '$dateFromParts':
             if not isinstance(out_value, dict):
                 raise OperationFailure(
@@ -936,6 +968,68 @@ class _Parser:
             f'aggregation pipeline, it is currently not implemented '
             f'in Mongomock.'
         )
+
+    def _format_date_to_string(self, date_value, format_str):
+        if not isinstance(format_str, str):
+            raise OperationFailure('$dateToString "format" must be a string')
+
+        format_mapping = {
+            '%Y': '%Y',  # Year (4 digits)
+            '%m': '%m',  # Month (2 digits)
+            '%d': '%d',  # Day of month (2 digits)
+            '%H': '%H',  # Hour (2 digits, 24h)
+            '%M': '%M',  # Minute (2 digits)
+            '%S': '%S',  # Second (2 digits)
+            '%L': '%f',  # Millisecond (3 digits) - we'll handle this specially
+            '%u': '%w',  # Day of week (1-7, Monday=1) - needs adjustment
+            '%w': '%w',  # Day of week (0-6, Sunday=0)
+            '%j': '%j',  # Day of year (3 digits)
+            '%U': '%U',  # Week of year (Sunday as first day)
+            '%V': '%V',  # Week of year (ISO 8601)
+        }
+
+        py_format = format_str
+        for mongo_fmt, py_fmt in format_mapping.items():
+            py_format = py_format.replace(mongo_fmt, py_fmt)
+
+        formatted = date_value.strftime(py_format)
+
+        if '%L' in format_str:
+            ms = str(date_value.microsecond // 1000).zfill(3)
+            formatted = formatted.replace('%L', ms)
+
+        if '%u' in format_str:
+            # Python's %w gives 0-6 (Sunday=0), MongoDB wants 1-7 (Monday=1)
+            day_of_week = (date_value.weekday() + 1) % 7 or 7
+            formatted = formatted.replace('%u', str(day_of_week))
+
+        return formatted
+
+    def _subtract_from_date(self, start_date, unit, amount):
+        if not isinstance(unit, str):
+            raise OperationFailure('$dateSubtract "unit" must be a string')
+
+        unit = unit.lower()
+        amount = int(amount)
+
+        if unit == 'year':
+            return start_date - datetime.timedelta(days=365 * amount)
+        elif unit == 'month':
+            return start_date - datetime.timedelta(days=30 * amount)
+        elif unit == 'week':
+            return start_date - datetime.timedelta(weeks=amount)
+        elif unit == 'day':
+            return start_date - datetime.timedelta(days=amount)
+        elif unit == 'hour':
+            return start_date - datetime.timedelta(hours=amount)
+        elif unit == 'minute':
+            return start_date - datetime.timedelta(minutes=amount)
+        elif unit == 'second':
+            return start_date - datetime.timedelta(seconds=amount)
+        elif unit == 'millisecond':
+            return start_date - datetime.timedelta(milliseconds=amount)
+        else:
+            raise OperationFailure(f'Unsupported unit for $dateSubtract: {unit}')
 
     def _handle_type_convertion_operator(self, operator, values):
         if operator == '$toString':
