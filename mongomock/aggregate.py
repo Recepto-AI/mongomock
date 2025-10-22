@@ -1285,6 +1285,7 @@ class _Parser:
                     )
 
                 input_value[field_value] = self.parse(value)
+                return input_value
 
             except Exception as e:
                 print(f'Error setting field {field} with value {value}: {e}', flush=True)
