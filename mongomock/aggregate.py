@@ -1033,6 +1033,29 @@ class _Parser:
                 ).parse(in_expr)
             return accumulator
 
+        if operator == '$range':
+            if not isinstance(value, list):
+                raise OperationFailure('$range only supports a list as its argument')
+            if len(value) < 2 or len(value) > 3:
+                raise OperationFailure(
+                    f'Expression $range takes at least 2 arguments, and at most '
+                    f'3, but {len(value)} were passed in'
+                )
+            parsed_min = self.parse(value[0])
+            parsed_max = self.parse(value[1])
+
+            if not isinstance(parsed_min, int):
+                raise OperationFailure(
+                    f'First argument to $range must be an integer, but is of type: {type(parsed_min)}'
+                )
+            if not isinstance(parsed_max, int):
+                raise OperationFailure(
+                    f'Second argument to $range must be an integer, but is of type: {type(parsed_max)}'
+                )
+
+            return list(range(parsed_min, parsed_max))
+
+
         raise NotImplementedError(
             f"Although '{operator}' is a valid array operator for the "
             f'aggregation pipeline, it is currently not implemented '
