@@ -2079,6 +2079,19 @@ def _handle_recepto_debug_stage(in_collection, database, options, user_vars):
         print(f'Aggregation debug: {options}: {value!r}')
     return in_collection
 
+def handle_unset_stage(in_collection, database, options, user_vars):
+    if not isinstance(options, list):
+        raise OperationFailure('the $unset stage specification must be an array')
+    out_collection = []
+    for doc in in_collection:
+        new_doc = copy.deepcopy(doc)
+        for field in options:
+            try:
+                helpers.delete_value_by_dot(new_doc, field)
+            except KeyError:
+                pass
+        out_collection.append(new_doc)
+    return out_collection
 
 _PIPELINE_HANDLERS = {
     '$addFields': _handle_add_fields_stage,
