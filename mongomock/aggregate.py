@@ -438,13 +438,18 @@ class _Parser:
             values = self.parse(values) if isinstance(values, str) else self.parse_many(values)
             return _GROUPING_OPERATOR_MAP[operator](values)
         if operator == '$arrayElemAt':
-            key, value = values
-            array = self.parse(key)
-            index = self.parse(value)
             try:
-                return array[index]
-            except IndexError as error:
-                raise KeyError('Array have length less than index value') from error
+                key, value = values
+                array = self.parse(key)
+                index = self.parse(value)
+                try:
+                    return array[index]
+                except IndexError as error:
+                    raise KeyError('Array have length less than index value') from error
+            except Exception as error:
+                raise OperationFailure(
+                    f'Error occured while processing $arrayElemAt operator: array: {array}, index: {index} with key: {key} and value: {value}: {error}'
+                ) from error
         if operator == '$getField':
             if isinstance(values, dict):
                 field = values.get('field', None)
@@ -981,7 +986,7 @@ class _Parser:
             if not isinstance(array_value, list):
                 raise OperationFailure(
                     f'First argument to $slice must be an array, but is of '
-                    f'type: {type(array_value)}'
+                    f'type: {type(array_value)}, value: {array_value}'
                 )
             for num, v in zip(('Second', 'Third'), parsed_value[1:]):
                 if not isinstance(v, int):
@@ -989,7 +994,7 @@ class _Parser:
                         f'{num} argument to $slice must be resolved to numeric, but is of type: {type(v)}'
                     )
             if len(parsed_value) > 2 and parsed_value[2] <= 0:
-                raise OperationFailure(f'Third argument to $slice must be positive: {value[2]}')
+                raise OperationFailure(f'Third argument to $slice must be positive: {value[2]}:{parsed_value[2]}')
 
             start = parsed_value[1]
             stop = None
@@ -2079,7 +2084,7 @@ def _handle_recepto_debug_stage(in_collection, database, options, user_vars):
         print(f'Aggregation debug: {options}: {value!r}')
     return in_collection
 
-def handle_unset_stage(in_collection, database, options, user_vars):
+def _handle_unset_stage(in_collection, database, options, user_vars):
     if not isinstance(options, list):
         raise OperationFailure('the $unset stage specification must be an array')
     out_collection = []
@@ -2122,7 +2127,7 @@ _PIPELINE_HANDLERS = {
     '$skip': lambda c, d, o, v: c[o:],
     '$sort': _handle_sort_stage,
     '$sortByCount': None,
-    '$unset': None,
+    '$unset': _handle_unset_stage,
     '$unwind': _handle_unwind_stage,
     '$receptoDebug': _handle_recepto_debug_stage,
 }
