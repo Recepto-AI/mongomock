@@ -435,7 +435,7 @@ class _Parser:
 
     def _handle_project_operator(self, operator, values):
         if operator in _GROUPING_OPERATOR_MAP:
-            values = self.parse(values) if isinstance(values, str) else self.parse_many(values)
+            values = self.parse(values)
             return _GROUPING_OPERATOR_MAP[operator](values)
         if operator == '$arrayElemAt':
             try:
@@ -577,6 +577,7 @@ class _Parser:
                 string = self.parse(values[0])
                 delimiter = self.parse(values[1])
             except KeyError:
+                print(f"KeyError in $split with values: {values}", flush=True)
                 return None
 
             if string is None or delimiter is None:
@@ -676,6 +677,60 @@ class _Parser:
                 raise OperationFailure("$regexMatch needs 'input' to be of type string")
 
             return bool(regex.search(input_value))
+        elif operator == '$strLenBytes':
+            string = self.parse(values)
+            if string is None:
+                return 0
+            if not isinstance(string, str):
+                raise TypeError('$strLenBytes input must evaluate to string')
+            return len(string.encode('utf-8'))
+        elif operator == '$strLenCP':
+            string = self.parse(values)
+            if string is None:
+                return 0
+            if not isinstance(string, str):
+                raise TypeError('$strLenCP input must evaluate to string')
+            return len(string)
+        
+        elif operator == '$substrCP':
+            if len(values) != 3:
+                raise OperationFailure('substrCP must have 3 items')
+            string = str(self.parse(values[0]))
+            first = self.parse(values[1])
+            length = self.parse(values[2])
+            if string is None:
+                return ''
+            if first < 0:
+                raise OperationFailure(
+                    'Negative starting point given to $substrCP is not allowed.'
+                )
+            if length < 0:
+                raise OperationFailure(
+                    'Negative length given to $substrCP is not allowed.'
+                )
+            second = len(string) if length < 0 else first + length
+            output = string[first:second]
+            print(f'$substrCP output: {output}', flush=True)
+            return output
+        elif operator == '$substrBytes':
+            if len(values) != 3:
+                raise OperationFailure('substrBytes must have 3 items')
+            string = str(self.parse(values[0]))
+            first = self.parse(values[1])
+            length = self.parse(values[2])
+            if string is None:
+                return ''
+            byte_string = string.encode('utf-8')
+            if first < 0:
+                raise OperationFailure(
+                    'Negative starting point given to $substrBytes is not allowed.'
+                )
+            if length < 0:
+                raise OperationFailure(
+                    'Negative length given to $substrBytes is not allowed.'
+                )
+            second = len(byte_string) if length < 0 else first + length
+            return byte_string[first:second].decode('utf-8')
 
         if operator == '$regexFind':
             if not isinstance(values, dict):
