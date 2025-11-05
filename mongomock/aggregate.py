@@ -1494,7 +1494,7 @@ class _Parser:
 
     def _handle_object_operator(self, operator, values):
         if operator == '$mergeObjects':
-            values = self.parse(values) if isinstance(values, str) else self.parse_many(values)
+            values = self.parse(values)
             return _merge_objects_operation(values)
 
         if operator == '$setField':
