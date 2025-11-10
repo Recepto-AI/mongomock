@@ -147,6 +147,7 @@ string_operators = [
     '$toLower',
     '$toUpper',
     '$trim',
+    '$replaceAll'
 ]
 comparison_operators = [
     '$cmp',
@@ -580,6 +581,39 @@ class _Parser:
             if not isinstance(delimiter, str):
                 raise TypeError('split second argument must evaluate to string')
             return string.split(delimiter)
+
+        if operator == '$replaceAll':
+            if not isinstance(values, dict):
+                raise OperationFailure(
+                    f'$replaceAll expects an object of named arguments but found: {type(values)}'
+                )
+            for field in ('input', 'find', 'replacement'):
+                if field not in values:
+                    raise OperationFailure(f"$replaceAll requires '{field}' parameter")
+            unknown_args = set(values) - {'input', 'find', 'replacement'}
+            if unknown_args:
+                raise OperationFailure(
+                    f'$replaceAll found an unknown argument: {next(iter(unknown_args))}'
+                )
+
+            try:
+                input_value = self.parse(values['input'])
+                find_value = self.parse(values['find'])
+                replacement_value = self.parse(values['replacement'])
+            except KeyError:
+                return None
+
+            if input_value is None or find_value is None or replacement_value is None:
+                return None
+            if not isinstance(input_value, str):
+                raise TypeError('$replaceAll "input" must evaluate to string')
+            if not isinstance(find_value, str):
+                raise TypeError('$replaceAll "find" must evaluate to string')
+            if not isinstance(replacement_value, str):
+                raise TypeError('$replaceAll "replacement" must evaluate to string')
+
+            return input_value.replace(find_value, replacement_value)
+
         if operator == '$substr':
             if len(values) != 3:
                 raise OperationFailure('substr must have 3 items')
