@@ -137,7 +137,7 @@ string_operators = [
     '$indexOfBytes',
     '$indexOfCP',
     '$regexMatch',
-    '$regexFind'
+    '$regexFind',
     '$split',
     '$strcasecmp',
     '$strLenBytes',
