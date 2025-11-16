@@ -1180,22 +1180,24 @@ class _Parser:
                         
                         if isinstance(item_value, (int, float)):
                             item_value = item_value * direction
-                        elif item is None:
+                        elif item_value is None:
                             item_value = float('-inf') if direction == 1 else float('inf')
                         else:
                             raise OperationFailure(
                                 f'$sortArray not yet supports sorting by non-numeric fields, got: {type(item_value)}'
                             )
                         key_list.append(item_value)
+                        return tuple(key_list)
                 elif isinstance(sort_by, int):
+                    key: int | str
                     if sort_by not in (1, -1):
                         raise OperationFailure(
                             f'Sort order must be 1 (ascending) or -1 (descending), got: {sort_by}'
                         )
                     if isinstance(item, (int, float)):
-                        key_list = [item * sort_by]
+                        key = item * sort_by
                     elif item is None:
-                        key_list = [float('-inf') if sort_by == 1 else float('inf')]
+                        key = float('-inf') if sort_by == 1 else float('inf')
                     else:
                         raise OperationFailure(
                             f'$sortArray not yet supports sorting by non-numeric fields, got: {type(item)}'
