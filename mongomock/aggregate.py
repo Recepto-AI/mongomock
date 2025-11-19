@@ -2233,10 +2233,15 @@ def _handle_recepto_debug_stage(in_collection, database, options, user_vars):
     return in_collection
 
 def _handle_unset_stage(in_collection, database, options, user_vars):
-    if not isinstance(options, list):
-        raise OperationFailure('the $unset stage specification must be an array')
+    if not isinstance(options, (list, dict)):
+        raise OperationFailure('the $unset stage specification must be an array or an object')
     out_collection = []
     for doc in in_collection:
+        if isinstance(options, dict):
+            options = _Parser(doc, user_vars=user_vars).parse(options)
+            print(f"Unset options parsed as dict to: {options}", flush=True)
+        if not isinstance(options, list):
+            raise OperationFailure('the $unset stage specification must be an array for each document')
         new_doc = copy.deepcopy(doc)
         for field in options:
             try:
