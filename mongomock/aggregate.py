@@ -456,6 +456,7 @@ class _Parser:
             if isinstance(values, dict):
                 field = values.get('field', None)
                 input = values.get('input', '$$ROOT')
+                default = values.get('default', NOTHING)
                 if field is None:
                     raise OperationFailure('$getField requires "field" parameter')
 
@@ -469,7 +470,10 @@ class _Parser:
                 try:
                     return input_doc[field_value]
                 except KeyError as error:
-                    raise KeyError(f'Field "{field}" not found in document') from error
+                    if default is not NOTHING:
+                        return self.parse(default)
+                    else:
+                        raise KeyError(f'Field "{field}" not found in document') from error
 
         raise NotImplementedError(
             f"Although '{operator}' is a valid project operator for the "
@@ -561,7 +565,7 @@ class _Parser:
                 chars = ' '
 
             if string is None:
-                return ''
+                raise TypeError('$trim input must evaluate to string')
             if not isinstance(string, str):
                 raise TypeError('$trim input must evaluate to string')
             if not isinstance(chars, str):
