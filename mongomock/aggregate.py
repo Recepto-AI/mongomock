@@ -129,7 +129,7 @@ array_operators = [
     '$size',
     '$slice',
     '$zip',
-    '$sortArray'
+    '$sortArray',
 ]
 object_operators = ['$mergeObjects', '$setField']
 text_search_operators = ['$meta']
@@ -149,7 +149,7 @@ string_operators = [
     '$toLower',
     '$toUpper',
     '$trim',
-    '$replaceAll'
+    '$replaceAll',
 ]
 comparison_operators = [
     '$cmp',
@@ -583,7 +583,7 @@ class _Parser:
                 string = self.parse(values[0])
                 delimiter = self.parse(values[1])
             except KeyError:
-                print(f"KeyError in $split with values: {values}", flush=True)
+                print(f'KeyError in $split with values: {values}', flush=True)
                 return None
 
             if string is None or delimiter is None:
@@ -593,6 +593,27 @@ class _Parser:
             if not isinstance(delimiter, str):
                 raise TypeError('split second argument must evaluate to string')
             return string.split(delimiter)
+        if operator == '$indexOfBytes':
+            if not isinstance(values, (list)):
+                return TypeError('$indexOfBytes requires an array as first argument')
+
+            if len(values) < 2:
+                raise OperationFailure('$indexOfBytes requires at least 2 items')
+            try:
+                string = self.parse(values[0])
+                substring = self.parse(values[1])
+                start = self.parse(values[2]) if len(values) > 2 else 0
+                end = self.parse(values[3]) if len(values) > 3 else len(string)
+            except KeyError:
+                return None
+
+            if not isinstance(string, str) or not isinstance(substring, str):
+                raise TypeError('$indexOfBytes arguments must evaluate to string')
+            if not isinstance(start, int) or not isinstance(end, int):
+                raise TypeError('$indexOfBytes start and end arguments must evaluate to integer')
+            sliced = string[start:end]
+            index = sliced.encode('utf-8').find(substring.encode('utf-8'))
+            return index
 
         if operator == '$replaceAll':
             if not isinstance(values, dict):
@@ -740,13 +761,9 @@ class _Parser:
             if string is None:
                 return ''
             if first < 0:
-                raise OperationFailure(
-                    'Negative starting point given to $substrCP is not allowed.'
-                )
+                raise OperationFailure('Negative starting point given to $substrCP is not allowed.')
             if length < 0:
-                raise OperationFailure(
-                    'Negative length given to $substrCP is not allowed.'
-                )
+                raise OperationFailure('Negative length given to $substrCP is not allowed.')
             second = len(string) if length < 0 else first + length
             output = string[first:second]
             print(f'$substrCP output: {output}', flush=True)
@@ -765,9 +782,7 @@ class _Parser:
                     'Negative starting point given to $substrBytes is not allowed.'
                 )
             if length < 0:
-                raise OperationFailure(
-                    'Negative length given to $substrBytes is not allowed.'
-                )
+                raise OperationFailure('Negative length given to $substrBytes is not allowed.')
             second = len(byte_string) if length < 0 else first + length
             return byte_string[first:second].decode('utf-8')
 
@@ -1088,7 +1103,9 @@ class _Parser:
                         f'{num} argument to $slice must be resolved to numeric, but is of type: {type(v)}'
                     )
             if len(parsed_value) > 2 and parsed_value[2] <= 0:
-                raise OperationFailure(f'Third argument to $slice must be positive: {value[2]}:{parsed_value[2]}')
+                raise OperationFailure(
+                    f'Third argument to $slice must be positive: {value[2]}:{parsed_value[2]}'
+                )
 
             start = parsed_value[1]
             stop = None
@@ -1154,7 +1171,7 @@ class _Parser:
 
             return list(range(parsed_min, parsed_max))
 
-        if operator == "$sortArray":
+        if operator == '$sortArray':
             if not isinstance(value, dict):
                 raise OperationFailure('$sortArray only supports an object as its argument')
             if 'input' not in value or 'sortBy' not in value:
@@ -1181,7 +1198,7 @@ class _Parser:
                                 f'Sort order must be 1 (ascending) or -1 (descending), got: {direction}'
                             )
                         item_value = helpers.get_value_by_dot(item, key)
-                        
+
                         if isinstance(item_value, (int, float)):
                             item_value = item_value * direction
                         elif item_value is None:
@@ -2236,6 +2253,7 @@ def _handle_recepto_debug_stage(in_collection, database, options, user_vars):
         print(f'Aggregation debug: {options}: {value!r}')
     return in_collection
 
+
 def _handle_unset_stage(in_collection, database, options, user_vars):
     if not isinstance(options, (list, dict)):
         raise OperationFailure('the $unset stage specification must be an array or an object')
@@ -2243,9 +2261,11 @@ def _handle_unset_stage(in_collection, database, options, user_vars):
     for doc in in_collection:
         if isinstance(options, dict):
             options = _Parser(doc, user_vars=user_vars).parse(options)
-            print(f"Unset options parsed as dict to: {options}", flush=True)
+            print(f'Unset options parsed as dict to: {options}', flush=True)
         if not isinstance(options, list):
-            raise OperationFailure('the $unset stage specification must be an array for each document')
+            raise OperationFailure(
+                'the $unset stage specification must be an array for each document'
+            )
         new_doc = copy.deepcopy(doc)
         for field in options:
             try:
@@ -2254,6 +2274,7 @@ def _handle_unset_stage(in_collection, database, options, user_vars):
                 pass
         out_collection.append(new_doc)
     return out_collection
+
 
 _PIPELINE_HANDLERS = {
     '$addFields': _handle_add_fields_stage,
