@@ -129,6 +129,7 @@ array_operators = [
     '$size',
     '$slice',
     '$zip',
+    '$sortArray'
 ]
 object_operators = ['$mergeObjects', '$setField']
 text_search_operators = ['$meta']
@@ -455,6 +456,7 @@ class _Parser:
             if isinstance(values, dict):
                 field = values.get('field', None)
                 input = values.get('input', '$$ROOT')
+                default = values.get('default', NOTHING)
                 if field is None:
                     raise OperationFailure('$getField requires "field" parameter')
 
@@ -468,7 +470,10 @@ class _Parser:
                 try:
                     return input_doc[field_value]
                 except KeyError as error:
-                    raise KeyError(f'Field "{field}" not found in document') from error
+                    if default is not NOTHING:
+                        return self.parse(default)
+                    else:
+                        raise KeyError(f'Field "{field}" not found in document') from error
 
         raise NotImplementedError(
             f"Although '{operator}' is a valid project operator for the "
@@ -560,7 +565,7 @@ class _Parser:
                 chars = ' '
 
             if string is None:
-                return ''
+                raise TypeError('$trim input must evaluate to string')
             if not isinstance(string, str):
                 raise TypeError('$trim input must evaluate to string')
             if not isinstance(chars, str):
@@ -725,7 +730,7 @@ class _Parser:
             if not isinstance(string, str):
                 raise TypeError('$strLenCP input must evaluate to string')
             return len(string)
-        
+
         elif operator == '$substrCP':
             if len(values) != 3:
                 raise OperationFailure('substrCP must have 3 items')
@@ -1149,6 +1154,64 @@ class _Parser:
 
             return list(range(parsed_min, parsed_max))
 
+        if operator == "$sortArray":
+            if not isinstance(value, dict):
+                raise OperationFailure('$sortArray only supports an object as its argument')
+            if 'input' not in value or 'sortBy' not in value:
+                raise OperationFailure('$sortArray requires both "input" and "sortBy" fields')
+
+            input_array = self.parse(value['input'])
+            sort_by = self.parse(value['sortBy'])
+
+            if not isinstance(input_array, list):
+                raise OperationFailure(
+                    f'"input" to $sortArray must be an array, but is of type: {type(input_array)}'
+                )
+            if not isinstance(sort_by, dict):
+                raise OperationFailure(
+                    f'"sortBy" to $sortArray must be an object, but is of type: {type(sort_by)}'
+                )
+
+            def sort_key(item):
+                if isinstance(sort_by, dict) and isinstance(item, dict):
+                    key_list = []
+                    for key, direction in sort_by.items():
+                        if not isinstance(direction, int) or direction not in (1, -1):
+                            raise OperationFailure(
+                                f'Sort order must be 1 (ascending) or -1 (descending), got: {direction}'
+                            )
+                        item_value = helpers.get_value_by_dot(item, key)
+                        
+                        if isinstance(item_value, (int, float)):
+                            item_value = item_value * direction
+                        elif item_value is None:
+                            item_value = float('-inf') if direction == 1 else float('inf')
+                        else:
+                            raise OperationFailure(
+                                f'$sortArray not yet supports sorting by non-numeric fields, got: {type(item_value)}'
+                            )
+                        key_list.append(item_value)
+                        return tuple(key_list)
+                elif isinstance(sort_by, int):
+                    key: int | str
+                    if sort_by not in (1, -1):
+                        raise OperationFailure(
+                            f'Sort order must be 1 (ascending) or -1 (descending), got: {sort_by}'
+                        )
+                    if isinstance(item, (int, float)):
+                        key = item * sort_by
+                    elif item is None:
+                        key = float('-inf') if sort_by == 1 else float('inf')
+                    else:
+                        raise OperationFailure(
+                            f'$sortArray not yet supports sorting by non-numeric fields, got: {type(item)}'
+                        )
+                else:
+                    raise OperationFailure(
+                        f'$sortArray "sortBy" must be either an object or an integer, got: {type(sort_by)}'
+                    )
+
+            return sorted(input_array, key=sort_key)
 
         raise NotImplementedError(
             f"Although '{operator}' is a valid array operator for the "
@@ -2174,10 +2237,15 @@ def _handle_recepto_debug_stage(in_collection, database, options, user_vars):
     return in_collection
 
 def _handle_unset_stage(in_collection, database, options, user_vars):
-    if not isinstance(options, list):
-        raise OperationFailure('the $unset stage specification must be an array')
+    if not isinstance(options, (list, dict)):
+        raise OperationFailure('the $unset stage specification must be an array or an object')
     out_collection = []
     for doc in in_collection:
+        if isinstance(options, dict):
+            options = _Parser(doc, user_vars=user_vars).parse(options)
+            print(f"Unset options parsed as dict to: {options}", flush=True)
+        if not isinstance(options, list):
+            raise OperationFailure('the $unset stage specification must be an array for each document')
         new_doc = copy.deepcopy(doc)
         for field in options:
             try:
