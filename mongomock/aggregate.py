@@ -1082,6 +1082,37 @@ class _Parser:
                     ignore_missing_keys=self._ignore_missing_keys,
                 ).parse(cond)
             ]
+        if operator == '$indexOfArray':
+            if not isinstance(value, (list, tuple)):
+                return TypeError('$indexOfArray requires an array as first argument')
+            if len(value) < 2 or len(value) > 4:
+                raise OperationFailure('$indexOfArray requires between 2 and 4 arguments')
+            try:
+                arr = self.parse(value[0])
+                elem = self.parse(value[1])
+                start = self.parse(value[2]) if len(value) > 2 else 0
+                # determine default end only after arr parsed
+                end = self.parse(value[3]) if len(value) > 3 else None
+            except KeyError:
+                return None
+
+            if arr is None or elem is None or start is None or (len(value) > 3 and end is None):
+                return None
+
+            if not isinstance(arr, (list, tuple)):
+                raise TypeError('$indexOfArray first argument must evaluate to an array')
+            if not isinstance(start, int) or (end is not None and not isinstance(end, int)):
+                raise TypeError('$indexOfArray start and end arguments must evaluate to integer')
+
+            if end is None:
+                end = len(arr)
+
+            sliced = arr[start:end]
+            try:
+                idx_in_slice = sliced.index(elem)
+            except ValueError:
+                return -1
+            return start + idx_in_slice
         if operator == '$slice':
             if not isinstance(value, list):
                 raise OperationFailure('$slice only supports a list as its argument')
