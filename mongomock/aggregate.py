@@ -925,7 +925,7 @@ class _Parser:
             
             replacement_value = self.parse(values["replacement"])
 
-            output = regex.sub(regex, replacement_value, input_value)
+            return regex.sub(replacement_value, input_value)
 
         # This should never happen: it is only a safe fallback if something went wrong.
         raise NotImplementedError(  # pragma: no cover
