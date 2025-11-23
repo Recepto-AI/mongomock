@@ -139,6 +139,7 @@ string_operators = [
     '$indexOfCP',
     '$regexMatch',
     '$regexFind',
+    '$regexReplace',
     '$split',
     '$strcasecmp',
     '$strLenBytes',
@@ -786,7 +787,7 @@ class _Parser:
             second = len(byte_string) if length < 0 else first + length
             return byte_string[first:second].decode('utf-8')
 
-        if operator == '$regexFind':
+        elif operator == '$regexFind':
             if not isinstance(values, dict):
                 raise OperationFailure(
                     f'$regexFind expects an object of named arguments but found: {type(values)}'
@@ -854,6 +855,77 @@ class _Parser:
 
             captures = list(m.groups()) if m.groups() else []
             return {'match': m.group(0), 'idx': m.start(), 'captures': captures}
+        elif operator == '$regexReplace':
+            if not isinstance(values, dict):
+                raise OperationFailure(
+                    f"$regexReplace expects an object of named arguments but found: {type(values)}"
+                )
+            for field in ("input", "regex", "replacement"):
+                if field not in values:
+                    raise OperationFailure(f"$regexReplace requires '{field}' parameter")
+            unknown_args = set(values) - {"input", "regex", "replacement", "options"}
+            if unknown_args:
+                raise OperationFailure(
+                    f"$regexReplace found an unknown argument: {next(iter(unknown_args))}"
+                )
+
+            try:
+                regex_val = self.parse(values["regex"])
+            except KeyError:
+                return None
+
+            options = None
+            raw_options = values.get("options", "").lower()
+            for option in raw_options:
+                if option not in "imxs":
+                    raise OperationFailure(
+                        f"$regexReplace invalid flag in regex options: {option}"
+                    )
+                re_option = getattr(re, option.upper())
+                if options is None:
+                    options = re_option
+                else:
+                    options |= re_option
+
+            if isinstance(regex_val, str):
+                regex = (
+                    re.compile(regex_val, options) if options else re.compile(regex_val)
+                )
+            elif "options" in values and getattr(regex_val, "flags", 0):
+                raise OperationFailure(
+                    "$regexReplace: regex option(s) specified in both 'regex' and 'option' fields"
+                )
+            elif isinstance(regex_val, helpers.RE_TYPE):
+                if options and not regex_val.flags:
+                    regex = re.compile(regex_val.pattern, options)
+                elif regex_val.flags & ~(re.I | re.M | re.X | re.S):
+                    raise OperationFailure(
+                        f"$regexReplace invalid flag in regex options: {regex_val.flags}"
+                    )
+                else:
+                    regex = regex_val
+            elif isinstance(regex_val, _RE_TYPES):
+                # bson.Regex
+                if regex_val.flags & ~(re.I | re.M | re.X | re.S):
+                    raise OperationFailure(
+                        f"$regexReplace invalid flag in regex options: {regex_val.flags}"
+                    )
+                regex = re.compile(regex_val.pattern, regex_val.flags or options)
+            else:
+                raise OperationFailure(
+                    "$regexReplace needs 'regex' to be of type string or regex"
+                )
+
+            try:
+                input_value = self.parse(values["input"])
+            except KeyError:
+                return None
+            if not isinstance(input_value, str):
+                raise OperationFailure("$regexReplace needs 'input' to be of type string")
+            
+            replacement_value = self.parse(values["replacement"])
+
+            output = regex.sub(regex, replacement_value, input_value)
 
         # This should never happen: it is only a safe fallback if something went wrong.
         raise NotImplementedError(  # pragma: no cover
