@@ -1586,6 +1586,8 @@ class _Parser:
                     return 'int'
                 elif isinstance(parsed, datetime.datetime):
                     return 'date'
+                elif isinstance(parsed, float):
+                    return 'double'
             except KeyError:
                 return 'missing'
             raise NotImplementedError(f"Type '{type(parsed)}' is not supported yet")
