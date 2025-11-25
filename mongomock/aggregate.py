@@ -368,7 +368,7 @@ class _Parser:
                 return None
             if not isinstance(number, numbers.Number):
                 raise OperationFailure(
-                    f"Parameter to {operator} must evaluate to a number, got '{type(number)}'"
+                    f"Parameter to {operator} must evaluate to a number, got '{type(number)}' with expression: {values} and value: {number}"
                 )
             if operator == '$abs':
                 return abs(number)
@@ -390,11 +390,11 @@ class _Parser:
         if operator in binary_arithmetic_operators:
             if not isinstance(values, (tuple, list)):
                 raise OperationFailure(
-                    f"Parameter to {operator} must evaluate to a list, got '{type(values)}'"
+                    f"Parameter to {operator} must evaluate to a list, got '{type(values)}' with expression: {values}"
                 )
 
             if len(values) != 2:
-                raise OperationFailure(f'{operator} must have only 2 parameters')
+                raise OperationFailure(f'{operator} must have only 2 parameters with expression: {values}')
             number_0, number_1 = self.parse_many(values)
             if number_0 is None or number_1 is None:
                 return None
@@ -416,7 +416,7 @@ class _Parser:
                 return res
 
         assert isinstance(values, (tuple, list)), (
-            f"Parameter to {operator} must evaluate to a list, got '{type(values)}'"
+            f"Parameter to {operator} must evaluate to a list, got '{type(values)}' with values: {values} and numbers: {number_0}, {number_1}"
         )
 
         parsed_values = list(self.parse_many(values))
@@ -448,10 +448,10 @@ class _Parser:
                 try:
                     return array[index]
                 except IndexError as error:
-                    raise KeyError('Array have length less than index value') from error
+                    raise KeyError(f'Array have length less than index value with expression: {values} and array value: {array} and index value: {index}') from error
             except Exception as error:
                 raise OperationFailure(
-                    f'Error occured while processing $arrayElemAt operator: array: {array}, index: {index} with key: {key} and value: {value}: {error}'
+                    f'Error occured while processing $arrayElemAt operator: array: {array}, index: {index} and expression: {value}: {error}'
                 ) from error
         if operator == '$getField':
             if isinstance(values, dict):
@@ -465,16 +465,16 @@ class _Parser:
                 input_doc = self.parse(input)
 
                 if not isinstance(input_doc, dict):
-                    raise OperationFailure('$getField "input" parameter must resolve to an object')
+                    raise OperationFailure(f'$getField "input" parameter must resolve to an object with value: {input_doc} and expression: {values}')
                 if not isinstance(field_value, str):
-                    raise OperationFailure('$getField "field" parameter must resolve to a string')
+                    raise OperationFailure(f'$getField "field" parameter must resolve to a string with value: {field_value} and expression: {values}')
                 try:
                     return input_doc[field_value]
                 except KeyError as error:
                     if default is not NOTHING:
                         return self.parse(default)
                     else:
-                        raise KeyError(f'Field "{field}" not found in document') from error
+                        raise KeyError(f'Field "{field}" not found in document with expression: {values}') from error
 
         raise NotImplementedError(
             f"Although '{operator}' is a valid project operator for the "
@@ -490,9 +490,9 @@ class _Parser:
                 raise InvalidDocument('$let only supports an object as its argument')
             for field in ('vars', 'in'):
                 if field not in value:
-                    raise OperationFailure(f"Missing '{field}' parameter to $let")
+                    raise OperationFailure(f"Missing '{field}' parameter to $let with expression: {value}")
             if not isinstance(value['vars'], dict):
-                raise OperationFailure('invalid parameter: expected an object (vars)')
+                raise OperationFailure(f'invalid parameter: expected an object (vars) with expression: {value}')
             user_vars = {
                 var_key: self.parse(var_value) for var_key, var_value in value['vars'].items()
             }
@@ -579,27 +579,27 @@ class _Parser:
             return ''.join([str(x) for x in parsed_list])
         if operator == '$split':
             if len(values) != 2:
-                raise OperationFailure('split must have 2 items')
+                raise OperationFailure(f'split must have 2 items with expression: {values}')
             try:
                 string = self.parse(values[0])
                 delimiter = self.parse(values[1])
             except KeyError:
-                print(f'KeyError in $split with values: {values}', flush=True)
+                print(f'KeyError in $split with string: {string} and delimiter: {delimiter} and expression: {values}', flush=True)
                 return None
 
             if string is None or delimiter is None:
                 return None
             if not isinstance(string, str):
-                raise TypeError('split first argument must evaluate to string')
+                raise TypeError(f'split first argument must evaluate to string: got {type(string)} with expression: {values} and string value: {string}')
             if not isinstance(delimiter, str):
-                raise TypeError('split second argument must evaluate to string')
+                raise TypeError(f'split second argument must evaluate to string: got {type(delimiter)} with expression: {values} and delimiter value: {delimiter}')
             return string.split(delimiter)
         if operator == '$indexOfBytes':
             if not isinstance(values, (list)):
-                return TypeError('$indexOfBytes requires an array as first argument')
+                return TypeError(f'$indexOfBytes requires an array as first argument with expression: {values}')
 
             if len(values) < 2:
-                raise OperationFailure('$indexOfBytes requires at least 2 items')
+                raise OperationFailure(f'$indexOfBytes requires at least 2 items with expression: {values}')
             try:
                 string = self.parse(values[0])
                 substring = self.parse(values[1])
@@ -609,9 +609,9 @@ class _Parser:
                 return None
 
             if not isinstance(string, str) or not isinstance(substring, str):
-                raise TypeError('$indexOfBytes arguments must evaluate to string')
+                raise TypeError(f'$indexOfBytes arguments must evaluate to string with expression: {values} and string value: {string} and substring value: {substring} with start: {start} and end: {end}')
             if not isinstance(start, int) or not isinstance(end, int):
-                raise TypeError('$indexOfBytes start and end arguments must evaluate to integer')
+                raise TypeError(f'$indexOfBytes start and end arguments must evaluate to integer values with expression: {values} and start value: {start} and end value: {end}')
             sliced = string[start:end]
             index = sliced.encode('utf-8').find(substring.encode('utf-8'))
             return index
@@ -679,15 +679,15 @@ class _Parser:
         if operator == '$regexMatch':
             if not isinstance(values, dict):
                 raise OperationFailure(
-                    f'$regexMatch expects an object of named arguments but found: {type(values)}'
+                    f'$regexMatch expects an object of named arguments but found: {type(values)} with expression: {values}'
                 )
             for field in ('input', 'regex'):
                 if field not in values:
-                    raise OperationFailure(f"$regexMatch requires '{field}' parameter")
+                    raise OperationFailure(f"$regexMatch requires '{field}' parameter with expression: {values}")
             unknown_args = set(values) - {'input', 'regex', 'options'}
             if unknown_args:
                 raise OperationFailure(
-                    f'$regexMatch found an unknown argument: {next(iter(unknown_args))}'
+                    f'$regexMatch found an unknown argument: {next(iter(unknown_args))} with expression: {values}'
                 )
 
             try:
@@ -699,7 +699,7 @@ class _Parser:
             raw_options = values.get('options', '').lower()
             for option in raw_options:
                 if option not in 'imxs':
-                    raise OperationFailure(f'$regexMatch invalid flag in regex options: {option}')
+                    raise OperationFailure(f'$regexMatch invalid flag in regex options: {option} with expression: {values}')
                 re_option = getattr(re, option.upper())
                 if options is None:
                     options = re_option
@@ -709,14 +709,14 @@ class _Parser:
                 regex = re.compile(regex_val, options) if options else re.compile(regex_val)
             elif 'options' in values and regex_val.flags:
                 raise OperationFailure(
-                    "$regexMatch: regex option(s) specified in both 'regex' and 'option' fields"
+                    f"$regexMatch: regex option(s) specified in both 'regex' and 'option' fields with expression: {values}"
                 )
             elif isinstance(regex_val, helpers.RE_TYPE):
                 if options and not regex_val.flags:
                     regex = re.compile(regex_val.pattern, options)
                 elif regex_val.flags & ~(re.I | re.M | re.X | re.S):
                     raise OperationFailure(
-                        f'$regexMatch invalid flag in regex options: {regex_val.flags}'
+                        f'$regexMatch invalid flag in regex options: {regex_val.flags} with expression: {values}'
                     )
                 else:
                     regex = regex_val
@@ -724,18 +724,18 @@ class _Parser:
                 # bson.Regex
                 if regex_val.flags & ~(re.I | re.M | re.X | re.S):
                     raise OperationFailure(
-                        f'$regexMatch invalid flag in regex options: {regex_val.flags}'
+                        f'$regexMatch invalid flag in regex options: {regex_val.flags} with expression: {values}'
                     )
                 regex = re.compile(regex_val.pattern, regex_val.flags or options)
             else:
-                raise OperationFailure("$regexMatch needs 'regex' to be of type string or regex")
+                raise OperationFailure(f"$regexMatch needs 'regex' to be of type string or regex with expression: {values}")
 
             try:
                 input_value = self.parse(values['input'])
             except KeyError:
                 return False
             if not isinstance(input_value, str):
-                raise OperationFailure("$regexMatch needs 'input' to be of type string")
+                raise OperationFailure(f"$regexMatch needs 'input' to be of type string, got {type(input_value)} with value: {input_value} with expression: {values}")
 
             return bool(regex.search(input_value))
         elif operator == '$strLenBytes':
@@ -743,7 +743,7 @@ class _Parser:
             if string is None:
                 return 0
             if not isinstance(string, str):
-                raise TypeError('$strLenBytes input must evaluate to string')
+                raise TypeError(f'$strLenBytes input must evaluate to string with expression: {values} and string value: {string}')
             return len(string.encode('utf-8'))
         elif operator == '$strLenCP':
             string = self.parse(values)
@@ -755,23 +755,23 @@ class _Parser:
 
         elif operator == '$substrCP':
             if len(values) != 3:
-                raise OperationFailure('substrCP must have 3 items')
+                raise OperationFailure(f'substrCP must have 3 items with expression: {values}')
             string = str(self.parse(values[0]))
             first = self.parse(values[1])
             length = self.parse(values[2])
             if string is None:
                 return ''
             if first < 0:
-                raise OperationFailure('Negative starting point given to $substrCP is not allowed.')
+                raise OperationFailure(f'Negative starting point given to $substrCP is not allowed with expression: {values} and first value: {first}.')
             if length < 0:
-                raise OperationFailure('Negative length given to $substrCP is not allowed.')
+                raise OperationFailure(f'Negative length given to $substrCP is not allowed with expression: {values} and length value: {length}.')
             second = len(string) if length < 0 else first + length
             output = string[first:second]
             print(f'$substrCP output: {output}', flush=True)
             return output
         elif operator == '$substrBytes':
             if len(values) != 3:
-                raise OperationFailure('substrBytes must have 3 items')
+                raise OperationFailure(f'substrBytes must have 3 items with expression: {values}')
             string = str(self.parse(values[0]))
             first = self.parse(values[1])
             length = self.parse(values[2])
@@ -780,25 +780,25 @@ class _Parser:
             byte_string = string.encode('utf-8')
             if first < 0:
                 raise OperationFailure(
-                    'Negative starting point given to $substrBytes is not allowed.'
+                    f'Negative starting point given to $substrBytes is not allowed with expression: {values} and first value: {first}.'
                 )
             if length < 0:
-                raise OperationFailure('Negative length given to $substrBytes is not allowed.')
+                raise OperationFailure(f'Negative length given to $substrBytes is not allowed with expression: {values} and length value: {length}.')
             second = len(byte_string) if length < 0 else first + length
             return byte_string[first:second].decode('utf-8')
 
         elif operator == '$regexFind':
             if not isinstance(values, dict):
                 raise OperationFailure(
-                    f'$regexFind expects an object of named arguments but found: {type(values)}'
+                    f'$regexFind expects an object of named arguments but found: {type(values)} with expression: {values}'
                 )
             for field in ('input', 'regex'):
                 if field not in values:
-                    raise OperationFailure(f"$regexFind requires '{field}' parameter")
+                    raise OperationFailure(f"$regexFind requires '{field}' parameter with expression: {values}")
             unknown_args = set(values) - {'input', 'regex', 'options'}
             if unknown_args:
                 raise OperationFailure(
-                    f'$regexFind found an unknown argument: {next(iter(unknown_args))}'
+                    f'$regexFind found an unknown argument: {next(iter(unknown_args))} with expression: {values}'
                 )
 
             try:
@@ -810,7 +810,7 @@ class _Parser:
             raw_options = values.get('options', '').lower()
             for option in raw_options:
                 if option not in 'imxs':
-                    raise OperationFailure(f'$regexFind invalid flag in regex options: {option}')
+                    raise OperationFailure(f'$regexFind invalid flag in regex options: {option} with expression: {values}')
                 re_option = getattr(re, option.upper())
                 if options is None:
                     options = re_option
@@ -821,14 +821,14 @@ class _Parser:
                 regex = re.compile(regex_val, options) if options else re.compile(regex_val)
             elif 'options' in values and getattr(regex_val, 'flags', 0):
                 raise OperationFailure(
-                    "$regexFind: regex option(s) specified in both 'regex' and 'option' fields"
+                    f"$regexFind: regex option(s) specified in both 'regex' and 'option' fields with expression: {values}"
                 )
             elif isinstance(regex_val, helpers.RE_TYPE):
                 if options and not regex_val.flags:
                     regex = re.compile(regex_val.pattern, options)
                 elif regex_val.flags & ~(re.I | re.M | re.X | re.S):
                     raise OperationFailure(
-                        f'$regexFind invalid flag in regex options: {regex_val.flags}'
+                        f'$regexFind invalid flag in regex options: {regex_val.flags} with expression: {values}'
                     )
                 else:
                     regex = regex_val
@@ -836,18 +836,18 @@ class _Parser:
                 # bson.Regex
                 if regex_val.flags & ~(re.I | re.M | re.X | re.S):
                     raise OperationFailure(
-                        f'$regexFind invalid flag in regex options: {regex_val.flags}'
+                        f'$regexFind invalid flag in regex options: {regex_val.flags} with expression: {values}'
                     )
                 regex = re.compile(regex_val.pattern, regex_val.flags or options)
             else:
-                raise OperationFailure("$regexFind needs 'regex' to be of type string or regex")
+                raise OperationFailure(f"$regexFind needs 'regex' to be of type string or regex with expression: {values}")
 
             try:
                 input_value = self.parse(values['input'])
             except KeyError:
                 return None
             if not isinstance(input_value, str):
-                raise OperationFailure("$regexFind needs 'input' to be of type string")
+                raise OperationFailure(f"$regexFind needs 'input' to be of type string with expression: {values} and input value: {input_value}")
 
             m = regex.search(input_value)
             if not m:
@@ -858,15 +858,15 @@ class _Parser:
         elif operator == '$regexReplace':
             if not isinstance(values, dict):
                 raise OperationFailure(
-                    f"$regexReplace expects an object of named arguments but found: {type(values)}"
+                    f"$regexReplace expects an object of named arguments but found: {type(values)} with expression: {values}"
                 )
             for field in ("input", "regex", "replacement"):
                 if field not in values:
-                    raise OperationFailure(f"$regexReplace requires '{field}' parameter")
+                    raise OperationFailure(f"$regexReplace requires '{field}' parameter with expression: {values}")
             unknown_args = set(values) - {"input", "regex", "replacement", "options"}
             if unknown_args:
                 raise OperationFailure(
-                    f"$regexReplace found an unknown argument: {next(iter(unknown_args))}"
+                    f"$regexReplace found an unknown argument: {next(iter(unknown_args))} with expression: {values}"
                 )
 
             try:
@@ -879,7 +879,7 @@ class _Parser:
             for option in raw_options:
                 if option not in "imxs":
                     raise OperationFailure(
-                        f"$regexReplace invalid flag in regex options: {option}"
+                        f"$regexReplace invalid flag in regex options: {option} with expression: {values}"
                     )
                 re_option = getattr(re, option.upper())
                 if options is None:
@@ -893,14 +893,14 @@ class _Parser:
                 )
             elif "options" in values and getattr(regex_val, "flags", 0):
                 raise OperationFailure(
-                    "$regexReplace: regex option(s) specified in both 'regex' and 'option' fields"
+                    f"$regexReplace: regex option(s) specified in both 'regex' and 'option' fields with expression: {values}"
                 )
             elif isinstance(regex_val, helpers.RE_TYPE):
                 if options and not regex_val.flags:
                     regex = re.compile(regex_val.pattern, options)
                 elif regex_val.flags & ~(re.I | re.M | re.X | re.S):
                     raise OperationFailure(
-                        f"$regexReplace invalid flag in regex options: {regex_val.flags}"
+                        f"$regexReplace invalid flag in regex options: {regex_val.flags} with expression: {values}"
                     )
                 else:
                     regex = regex_val
@@ -908,12 +908,12 @@ class _Parser:
                 # bson.Regex
                 if regex_val.flags & ~(re.I | re.M | re.X | re.S):
                     raise OperationFailure(
-                        f"$regexReplace invalid flag in regex options: {regex_val.flags}"
+                        f"$regexReplace invalid flag in regex options: {regex_val.flags} with expression: {values}"
                     )
                 regex = re.compile(regex_val.pattern, regex_val.flags or options)
             else:
                 raise OperationFailure(
-                    "$regexReplace needs 'regex' to be of type string or regex"
+                    f"$regexReplace needs 'regex' to be of type string or regex with expression: {values}"
                 )
 
             try:
@@ -921,9 +921,12 @@ class _Parser:
             except KeyError:
                 return None
             if not isinstance(input_value, str):
-                raise OperationFailure("$regexReplace needs 'input' to be of type string")
-            
+                raise OperationFailure(f"$regexReplace needs 'input' to be of type string with expression: {values} and input value: {input_value}")
+
             replacement_value = self.parse(values["replacement"])
+
+            if not isinstance(replacement_value, str):
+                raise OperationFailure(f"$regexReplace needs 'replacement' to be of type string with expression: {values} and replacement value: {replacement_value}")
 
             return regex.sub(replacement_value, input_value)
 
@@ -1074,14 +1077,14 @@ class _Parser:
             for parsed_item in parsed_list:
                 if parsed_item is not None and not isinstance(parsed_item, (list, tuple)):
                     raise OperationFailure(
-                        f'$concatArrays only supports arrays, not {type(parsed_item)}'
+                        f'$concatArrays only supports arrays, not {type(parsed_item)} expression: {value} and parsed item: {parsed_item}'
                     )
 
             return None if None in parsed_list else list(itertools.chain.from_iterable(parsed_list))
 
         if operator == '$map':
             if not isinstance(value, dict):
-                raise OperationFailure('$map only supports an object as its argument')
+                raise OperationFailure(f'$map only supports an object as its argument with expression: {value}')
 
             # NOTE: while the two validations below could be achieved with
             # one-liner set operations (e.g. set(value) - {'input', 'as',
@@ -1091,11 +1094,11 @@ class _Parser:
             # 'in'.
             for k in ('input', 'in'):
                 if k not in value:
-                    raise OperationFailure(f"Missing '{k}' parameter to $map")
+                    raise OperationFailure(f"Missing '{k}' parameter to $map with expression: {value}")
 
             for k in value:
                 if k not in {'input', 'as', 'in'}:
-                    raise OperationFailure(f'Unrecognized parameter to $map: {k}')
+                    raise OperationFailure(f'Unrecognized parameter to $map: {k} with expression: {value}')
 
             input_array = self._parse_or_nothing(value['input'])
 
@@ -1103,7 +1106,7 @@ class _Parser:
                 return None
 
             if not isinstance(input_array, (list, tuple)):
-                raise OperationFailure(f'input to $map must be an array not {type(input_array)}')
+                raise OperationFailure(f'input to $map must be an array not {type(input_array)} with expression: {value} with input value: {input_array}')
 
             fieldname = value.get('as', 'this')
             in_expr = value['in']
@@ -1120,27 +1123,25 @@ class _Parser:
             if isinstance(value, list):
                 if len(value) != 1:
                     raise OperationFailure(
-                        'Expression $size takes exactly 1 arguments. '
-                        '%d were passed in.' % len(value)
+                        f'Expression $size takes exactly 1 arguments.{len(value)} were passed in with expression: {value}'
                     )
                 value = value[0]
             array_value = self._parse_or_nothing(value)
             if not isinstance(array_value, (list, tuple)):
                 raise OperationFailure(
-                    'The argument to $size must be an array, but was of type: %s'
-                    % ('missing' if array_value is NOTHING else type(array_value))
+                    f'The argument to $size must be an array, but was of type: {type(array_value)} with expression: {value} and array value: {array_value}'
                 )
             return len(array_value)
 
         if operator == '$filter':
             if not isinstance(value, dict):
-                raise OperationFailure('$filter only supports an object as its argument')
+                raise OperationFailure(f'$filter only supports an object as its argument with expression: {value}')
             extra_params = set(value) - {'input', 'cond', 'as'}
             if extra_params:
-                raise OperationFailure(f'Unrecognized parameter to $filter: {extra_params.pop()}')
+                raise OperationFailure(f'Unrecognized parameter to $filter: {extra_params.pop()} with expression: {value}')
             missing_params = {'input', 'cond'} - set(value)
             if missing_params:
-                raise OperationFailure(f"Missing '{missing_params.pop()}' parameter to $filter")
+                raise OperationFailure(f"Missing '{missing_params.pop()}' parameter to $filter with expression: {value}")
 
             input_array = self.parse(value['input'])
             fieldname = value.get('as', 'this')
@@ -1156,9 +1157,9 @@ class _Parser:
             ]
         if operator == '$indexOfArray':
             if not isinstance(value, (list, tuple)):
-                return TypeError('$indexOfArray requires an array as first argument')
+                return TypeError(f'$indexOfArray requires an array as first argument with expression: {value}')
             if len(value) < 2 or len(value) > 4:
-                raise OperationFailure('$indexOfArray requires between 2 and 4 arguments')
+                raise OperationFailure(f'$indexOfArray requires between 2 and 4 arguments with expression: {value}')
             try:
                 arr = self.parse(value[0])
                 elem = self.parse(value[1])
@@ -1166,15 +1167,16 @@ class _Parser:
                 # determine default end only after arr parsed
                 end = self.parse(value[3]) if len(value) > 3 else None
             except KeyError:
+                print(f"$indexOfArray requires an array as first argument with expression: {value}")
                 return None
 
             if arr is None or elem is None or start is None or (len(value) > 3 and end is None):
                 return None
 
             if not isinstance(arr, (list, tuple)):
-                raise TypeError('$indexOfArray first argument must evaluate to an array')
+                raise TypeError(f'$indexOfArray first argument must evaluate to an array with expression: {value} and array value: {arr}')
             if not isinstance(start, int) or (end is not None and not isinstance(end, int)):
-                raise TypeError('$indexOfArray start and end arguments must evaluate to integer')
+                raise TypeError(f'$indexOfArray start and end arguments must evaluate to integer with expression: {value} and start value: {start} and end value: {end}')
 
             if end is None:
                 end = len(arr)
@@ -1187,27 +1189,27 @@ class _Parser:
             return start + idx_in_slice
         if operator == '$slice':
             if not isinstance(value, list):
-                raise OperationFailure('$slice only supports a list as its argument')
+                raise OperationFailure(f'$slice only supports a list as its argument with expression: {value}')
             if len(value) < 2 or len(value) > 3:
                 raise OperationFailure(
                     f'Expression $slice takes at least 2 arguments, and at most '
-                    f'3, but {len(value)} were passed in'
+                    f'3, but {len(value)} were passed in with expression: {value}'
                 )
             parsed_value = list(self.parse_many(value))
             array_value = parsed_value[0]
             if not isinstance(array_value, list):
                 raise OperationFailure(
                     f'First argument to $slice must be an array, but is of '
-                    f'type: {type(array_value)}, value: {array_value}'
+                    f'type: {type(array_value)}, value: {array_value} with expression: {value}'
                 )
             for num, v in zip(('Second', 'Third'), parsed_value[1:]):
                 if not isinstance(v, int):
                     raise OperationFailure(
-                        f'{num} argument to $slice must be resolved to numeric, but is of type: {type(v)}'
+                        f'{num} argument to $slice must be resolved to numeric, but is of type: {type(v)} with expression: {value}'
                     )
             if len(parsed_value) > 2 and parsed_value[2] <= 0:
                 raise OperationFailure(
-                    f'Third argument to $slice must be positive: {value[2]}:{parsed_value[2]}'
+                    f'Third argument to $slice must be positive: {value[2]}:{parsed_value[2]} with expression: {value}'
                 )
 
             start = parsed_value[1]
@@ -1225,13 +1227,13 @@ class _Parser:
 
         if operator == '$reduce':
             if not isinstance(value, dict):
-                raise OperationFailure('$reduce only supports an object as its argument')
+                raise OperationFailure(f'$reduce only supports an object as its argument with expression: {value}')
 
             reduce_keys = value.keys()
             if set(reduce_keys) != {'input', 'initialValue', 'in'}:
                 raise OperationFailure(
                     f"$reduce only supports the 'input', 'initialValue' and 'in' parameters, "
-                    f'found {reduce_keys}'
+                    f'found {reduce_keys} with expression: {value}'
                 )
 
             input_array = self._parse_or_nothing(value['input'])
@@ -1240,7 +1242,7 @@ class _Parser:
                 return None
 
             if not isinstance(input_array, (list, tuple)):
-                raise OperationFailure(f'input to $reduce must be an array not {type(input_array)}')
+                raise OperationFailure(f'input to $reduce must be an array not {type(input_array)} with expression: {value} and input value: {input_array}')
 
             in_expr = value['in']
             accumulator = self.parse(value['initialValue'])
@@ -1276,20 +1278,20 @@ class _Parser:
 
         if operator == '$sortArray':
             if not isinstance(value, dict):
-                raise OperationFailure('$sortArray only supports an object as its argument')
+                raise OperationFailure(f'$sortArray only supports an object as its argument with expression: {value}')
             if 'input' not in value or 'sortBy' not in value:
-                raise OperationFailure('$sortArray requires both "input" and "sortBy" fields')
+                raise OperationFailure(f'$sortArray requires both "input" and "sortBy" fields with expression: {value}')
 
             input_array = self.parse(value['input'])
             sort_by = self.parse(value['sortBy'])
 
             if not isinstance(input_array, list):
                 raise OperationFailure(
-                    f'"input" to $sortArray must be an array, but is of type: {type(input_array)}'
+                    f'"input" to $sortArray must be an array, but is of type: {type(input_array)} with expression: {value} and input value: {input_array}'
                 )
             if not isinstance(sort_by, dict):
                 raise OperationFailure(
-                    f'"sortBy" to $sortArray must be an object, but is of type: {type(sort_by)}'
+                    f'"sortBy" to $sortArray must be an object, but is of type: {type(sort_by)} with expression: {value} and sort by value: {sort_by}'
                 )
 
             def sort_key(item):
@@ -1324,11 +1326,11 @@ class _Parser:
                         key = float('-inf') if sort_by == 1 else float('inf')
                     else:
                         raise OperationFailure(
-                            f'$sortArray not yet supports sorting by non-numeric fields, got: {type(item)}'
+                            f'$sortArray not yet supports sorting by non-numeric fields, got: {type(item)} with expression: {value} and item value: {item}'
                         )
                 else:
                     raise OperationFailure(
-                        f'$sortArray "sortBy" must be either an object or an integer, got: {type(sort_by)}'
+                        f'$sortArray "sortBy" must be either an object or an integer, got: {type(sort_by)} with expression: {value} and sort by value: {sort_by}'
                     )
 
             return sorted(input_array, key=sort_key)
@@ -1511,7 +1513,7 @@ class _Parser:
 
             if not isinstance(parsed, (list, tuple)):
                 raise OperationFailure(
-                    f'$arrayToObject requires an array input, found: {type(parsed)}'
+                    f'$arrayToObject requires an array input, found: {type(parsed)} with expression: {values} and parsed value: {parsed}'
                 )
 
             if all(isinstance(x, dict) and set(x.keys()) == {'k', 'v'} for x in parsed):
@@ -1606,6 +1608,7 @@ class _Parser:
                     if out_value is not None:
                         return out_value
                 except KeyError:
+                    print(f"KeyError encountered while processing field: {field} with expression: {values}")
                     pass
             return self.parse(fallback)
         if operator == '$cond':
@@ -1629,13 +1632,13 @@ class _Parser:
         if operator == '$switch':
             if not isinstance(values, dict):
                 raise OperationFailure(
-                    f'$switch requires an object as an argument, found: {type(values)}'
+                    f'$switch requires an object as an argument, found: {type(values)} value: {values} with operator: {operator}'
                 )
 
             branches = values.get('branches', [])
             if not isinstance(branches, (list, tuple)):
                 raise OperationFailure(
-                    f"$switch expected an array for 'branches', found: {type(branches)}"
+                    f"$switch expected an array for 'branches', found: {type(branches)} branches: {branches} with operator: {operator}"
                 )
             if not branches:
                 raise OperationFailure('$switch requires at least one branch.')
@@ -1643,7 +1646,7 @@ class _Parser:
             for branch in branches:
                 if not isinstance(branch, dict):
                     raise OperationFailure(
-                        f'$switch expected each branch to be an object, found: {type(branch)}'
+                        f'$switch expected each branch to be an object, found: {type(branch)} branch: {branch} with operator: {operator}'
                     )
                 if 'case' not in branch:
                     raise OperationFailure("$switch requires each branch have a 'case' expression")
@@ -1682,7 +1685,7 @@ class _Parser:
         if operator == '$setIntersection':
             parsed_arrays = [self.parse(value) for value in values]
             if not isinstance(parsed_arrays, (list, tuple)) or len(values) < 2:
-                raise OperationFailure('$setIntersection requires at least two arrays as input')
+                raise OperationFailure(f'$setIntersection requires at least two arrays as input with value: {parsed_arrays} and expression: {values}')
             for i, arr in enumerate(parsed_arrays):
                 if not isinstance(arr, (list, tuple)):
                     raise OperationFailure(
@@ -1701,7 +1704,7 @@ class _Parser:
         if operator == '$anyElementTrue':
             array = self.parse(values)
             if not isinstance(array, (list, tuple)):
-                raise OperationFailure(f'$anyElementTrue requires an array, found: {type(array)}')
+                raise OperationFailure(f'$anyElementTrue requires an array, found: {type(array)} with value: {array} and expression: {values}')
             return any(helpers.mongodb_to_bool(item) for item in array)
 
         raise NotImplementedError(
@@ -1718,11 +1721,11 @@ class _Parser:
             fields = ['field', 'value', 'input']
             for operator in fields:
                 if operator not in values:
-                    raise OperationFailure(f"Must specify '{operator}' field for a $setField")
+                    raise OperationFailure(f"Must specify '{operator}' field for a $setField in expression: {values}.")
 
             for operator in values:
                 if operator not in fields:
-                    raise OperationFailure(f'Unrecognized option to $setField: {operator}.')
+                    raise OperationFailure(f'Unrecognized option to $setField: {operator} in expression: {values}.')
 
             field = values['field']
             value = values['value']
@@ -1733,8 +1736,7 @@ class _Parser:
 
                 if input_value is not None and not isinstance(input_value, dict):
                     raise OperationFailure(
-                        f"'input' expression must evaluate to an object or null or missing, but resulting value was: "
-                        f'{input_value}'
+                        f"'input' expression must evaluate to an object or null or missing, but resulting value was: {input_value} and expression: {input_doc}"
                     )
 
                 if input_value is None:
@@ -1744,8 +1746,7 @@ class _Parser:
 
                 if not isinstance(field_value, str):
                     raise OperationFailure(
-                        f"'field' expression must evaluate to a string, but resulting value was: "
-                        f'{field_value}'
+                        f"'field' expression must evaluate to a string, but resulting value was: {field_value} and expression: {field}"
                     )
 
                 input_value[field_value] = self.parse(value)
@@ -1836,9 +1837,9 @@ def _handle_lookup_stage(in_collection, database, options, user_vars):
 
     for operator in required_fields:
         if operator not in options:
-            raise OperationFailure(f"Must specify '{operator}' field for a $lookup")
+            raise OperationFailure(f"Must specify '{operator}' field for a $lookup with expression: {options}")
         if not isinstance(options[operator], str):
-            raise OperationFailure('Arguments to $lookup must be strings')
+            raise OperationFailure(f'Arguments to $lookup must be strings for fields: {operator} with expression: {options[operator]}')
         if operator in ('as', 'localField', 'foreignField') and options[operator].startswith('$'):
             raise OperationFailure("FieldPath field names may not start with '$'")
         if operator == 'as' and '.' in options[operator]:
@@ -2359,7 +2360,7 @@ def _handle_recepto_debug_stage(in_collection, database, options, user_vars):
 
 def _handle_unset_stage(in_collection, database, options, user_vars):
     if not isinstance(options, (list, dict)):
-        raise OperationFailure('the $unset stage specification must be an array or an object')
+        raise OperationFailure(f'the $unset stage specification must be an array or an object with expression: {options}')
     out_collection = []
     for doc in in_collection:
         if isinstance(options, dict):
@@ -2367,7 +2368,7 @@ def _handle_unset_stage(in_collection, database, options, user_vars):
             print(f'Unset options parsed as dict to: {options}', flush=True)
         if not isinstance(options, list):
             raise OperationFailure(
-                'the $unset stage specification must be an array for each document'
+                f'the $unset stage specification must be an array for each document with expression: {options}'
             )
         new_doc = copy.deepcopy(doc)
         for field in options:
