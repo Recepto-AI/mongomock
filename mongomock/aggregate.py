@@ -102,6 +102,7 @@ date_operators = [
     '$dateFromString',
     '$dateToString',
     '$dateSubtract',
+    '$dateDiff',
     '$dateFromParts',
     '$dayOfMonth',
     '$dayOfWeek',
@@ -1076,18 +1077,17 @@ class _Parser:
                     date_value = datetime.datetime.fromisoformat(date_string)
             except Exception as e:
                 raise OperationFailure(f'Error parsing date string: {str(e)}') from e
-            
+
             if timezone_str:
                 try:
-                    tz=pytz.timezone(timezone_str)
+                    tz = pytz.timezone(timezone_str)
                 except Exception as e:
                     raise OperationFailure(f'Invalid timezone: {timezone_str}') from e
                 if date_value.tzinfo is None:
                     date_value = pytz.UTC.localize(date_value)
                 date_value = date_value.astimezone(tz)
-            
-            return date_value
 
+            return date_value
 
         if operator == '$dateSubtract':
             if not isinstance(values, dict):
@@ -1120,6 +1120,63 @@ class _Parser:
                 return self._subtract_from_date(start_date, unit, amount)
             except Exception as e:
                 raise OperationFailure(f'Error subtracting from date: {str(e)}') from e
+
+        if operator == '$dateDiff':
+            if not isinstance(values, dict):
+                raise OperationFailure('$dateDiff requires a document as argument')
+
+            required = {'startDate', 'endDate', 'unit'}
+            if not required.issubset(values):
+                raise OperationFailure(
+                    '$dateDiff requires "startDate", "endDate", and "unit" fields'
+                )
+
+            start_date = self.parse(values['startDate'])
+            end_date = self.parse(values['endDate'])
+            unit = values['unit']
+            timezone_str = values.get('timezone')
+
+            if not isinstance(start_date, datetime.datetime):
+                raise OperationFailure('$dateDiff "startDate" must evaluate to a Date')
+            if not isinstance(end_date, datetime.datetime):
+                raise OperationFailure('$dateDiff "endDate" must evaluate to a Date')
+
+            # timezone handling
+            if timezone_str:
+                try:
+                    tz = pytz.timezone(timezone_str)
+                    if start_date.tzinfo is None:
+                        start_date = pytz.UTC.localize(start_date)
+                    if end_date.tzinfo is None:
+                        end_date = pytz.UTC.localize(end_date)
+                    start_date = start_date.astimezone(tz)
+                    end_date = end_date.astimezone(tz)
+                except Exception as e:
+                    raise OperationFailure(f'Invalid timezone: {timezone_str}') from e
+
+            diff = end_date - start_date
+
+            # Unit-based diff calculation
+            if unit == 'millisecond':
+                return int(diff.total_seconds() * 1000)
+            elif unit == 'second':
+                return int(diff.total_seconds())
+            elif unit == 'minute':
+                return int(diff.total_seconds() / 60)
+            elif unit == 'hour':
+                return int(diff.total_seconds() / 3600)
+            elif unit == 'day':
+                return diff.days
+            elif unit == 'week':
+                return diff.days // 7
+            elif unit == 'month':
+                return ((end_date.year - start_date.year) * 12) + (
+                    end_date.month - start_date.month
+                )
+            elif unit == 'year':
+                return end_date.year - start_date.year
+            else:
+                raise OperationFailure(f'Invalid $dateDiff unit: {unit}')
 
         if operator == '$dateFromParts':
             if not isinstance(out_value, dict):
