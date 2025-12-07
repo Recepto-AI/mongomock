@@ -131,6 +131,7 @@ array_operators = [
     '$slice',
     '$zip',
     '$sortArray',
+    '$shuffle',
 ]
 object_operators = ['$mergeObjects', '$setField']
 text_search_operators = ['$meta']
@@ -1519,6 +1520,16 @@ class _Parser:
                     )
 
             return sorted(input_array, key=sort_key)
+
+        if operator == '$shuffle':
+            array_value = self.parse(value)
+            if not isinstance(array_value, list):
+                raise OperationFailure(
+                    f'The argument to $shuffle must be an array, but was of type: {type(array_value)} with expression: {value} and array value: {array_value}'
+                )
+            shuffled_array = array_value.copy()
+            random.shuffle(shuffled_array)
+            return shuffled_array
 
         raise NotImplementedError(
             f"Although '{operator}' is a valid array operator for the "
