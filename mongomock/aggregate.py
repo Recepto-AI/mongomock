@@ -2566,7 +2566,7 @@ def _handle_match_stage(in_collection, database, options, user_vars):
 def _handle_recepto_debug_stage(in_collection, database, options, user_vars):
     for doc in in_collection:
         value = _parse_expression(options, doc, ignore_missing_keys=False, user_vars=user_vars)
-        print(f'Aggregation debug: {options}: {value!r}')
+        print(f'Aggregation debug: {options}: {value!r}', flush=True)
     return in_collection
 
 
